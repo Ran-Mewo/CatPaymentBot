@@ -634,18 +634,6 @@ class CatPaymentBot(commands.Bot):
         profile = await self.manager.get_payment_profile_by_id(subscription["payment_profile_id"])
         payment_name = profile["name"] if profile else "unknown"
         guild_name = guild.name
-        expires_at = subscription["expires_at"].date().isoformat()
-        member = guild.get_member(subscription["user_id"])
-        if member:
-            with contextlib.suppress(discord.HTTPException):
-                await member.send(
-                    embed=self._build_embed(
-                        f"Your subscription for **{guild_name}** / **{payment_name}** expires on {expires_at}."
-                        "\nPlease renew soon to keep your access.",
-                        title="Subscription Expiring",
-                        color=self.WARNING_COLOR,
-                    )
-                )
 
         if subscription.get("webhook_url"):
             payload = {
@@ -675,15 +663,6 @@ class CatPaymentBot(commands.Bot):
         if member and role:
             with contextlib.suppress(discord.HTTPException):
                 await member.remove_roles(role, reason="Subscription expired")
-        if member:
-            with contextlib.suppress(discord.HTTPException):
-                await member.send(
-                    embed=self._build_embed(
-                        f"Your subscription for **{guild_name}** / **{payment_name}** has expired.",
-                        title="Subscription Expired",
-                        color=self.ERROR_COLOR,
-                    )
-                )
 
         webhook_url = subscription.get("webhook_url")
         if webhook_url:
