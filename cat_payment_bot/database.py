@@ -62,6 +62,9 @@ class Database:
                 FOREIGN KEY(guild_id) REFERENCES guild_settings(guild_id) ON DELETE CASCADE
             );
 
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_profiles_guild_id_name_nocase
+            ON payment_profiles (guild_id, name COLLATE NOCASE);
+
             CREATE TABLE IF NOT EXISTS payment_sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id INTEGER NOT NULL,
@@ -155,7 +158,7 @@ class Database:
             """,
             (
                 guild_id,
-                name.lower(),
+                name,
                 role_id,
                 duration_days,
                 json.dumps(parameters),
@@ -164,7 +167,10 @@ class Database:
                 now,
             ),
         )
-        row = await self.fetch_one("SELECT id FROM payment_profiles WHERE guild_id = ? AND name = ?", (guild_id, name.lower()))
+        row = await self.fetch_one(
+            "SELECT id FROM payment_profiles WHERE guild_id = ? AND name = ? COLLATE NOCASE",
+            (guild_id, name),
+        )
         assert row is not None
         return int(row["id"])
 
@@ -173,9 +179,9 @@ class Database:
             """
             SELECT id, guild_id, name, role_id, duration_days, parameters, donation_mode
             FROM payment_profiles
-            WHERE guild_id = ? AND name = ?
+            WHERE guild_id = ? AND name = ? COLLATE NOCASE
             """,
-            (guild_id, name.lower()),
+            (guild_id, name),
         )
         if row is None:
             return None
@@ -190,7 +196,7 @@ class Database:
             SELECT id, guild_id, name, role_id, duration_days, parameters, donation_mode
             FROM payment_profiles
             WHERE guild_id = ?
-            ORDER BY name ASC
+            ORDER BY name COLLATE NOCASE ASC
             """,
             (guild_id,),
         )
@@ -220,8 +226,8 @@ class Database:
 
     async def delete_payment_profile(self, guild_id: int, name: str) -> Optional[int]:
         row = await self.fetch_one(
-            "SELECT id FROM payment_profiles WHERE guild_id = ? AND name = ?",
-            (guild_id, name.lower()),
+            "SELECT id FROM payment_profiles WHERE guild_id = ? AND name = ? COLLATE NOCASE",
+            (guild_id, name),
         )
         if row is None:
             return None

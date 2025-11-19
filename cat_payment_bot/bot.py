@@ -417,7 +417,7 @@ class CatPaymentBot(commands.Bot):
         options = []
         for profile in profiles:
             name = profile["name"]
-            if current_lower and current_lower not in name:
+            if current_lower and current_lower not in name.lower():
                 continue
             options.append(app_commands.Choice(name=name, value=name))
             if len(options) >= 25:
@@ -549,13 +549,6 @@ class CatPaymentBot(commands.Bot):
         profile: Optional[dict[str, Any]],
         payload: dict[str, Any],
     ) -> None:
-        await self._notify_user(
-            session,
-            "Payment confirmed! Thank you.",
-            title="Payment Complete",
-            color=self.SUCCESS_COLOR,
-        )
-
         if not guild or not profile:
             return
 
@@ -570,13 +563,7 @@ class CatPaymentBot(commands.Bot):
         duration_days = profile.get("duration_days")
         webhook_url = session.webhook_url or profile["parameters"].get("webhook") if profile else None
         if duration_days:
-            expires_at = await self.manager.upsert_subscription(session, profile, webhook_url)
-            await self._notify_user(
-                session,
-                f"Subscription activated. Next renewal on {expires_at.date().isoformat()}.",
-                title="Subscription Active",
-                color=self.ACCENT_COLOR,
-            )
+            await self.manager.upsert_subscription(session, profile, webhook_url)
 
         if webhook_url:
             webhook_payload = dict(payload)
