@@ -13,7 +13,7 @@ class Settings:
     database_path: str = "cat_payment_bot.db"
     status_poll_interval: int = 60
     subscription_check_interval: int = 3600
-    session_ttl_minutes: int = 20
+    session_ttl_minutes: int = 60
     request_timeout: int = 30
     user_agent: str = "CatPaymentBot/1.0"
 
