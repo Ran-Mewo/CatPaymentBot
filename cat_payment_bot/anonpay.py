@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
 from typing import Any, Optional
 
 import aiohttp
@@ -8,6 +10,9 @@ import aiohttp
 
 class AnonpayError(RuntimeError):
     """Generic error wrapper for AnonPay API interactions."""
+
+
+log = logging.getLogger(__name__)
 
 
 class AnonpayClient:
@@ -42,10 +47,19 @@ class AnonpayClient:
         session = await self._get_session()
         try:
             async with session.get(self.BASE_URL, params=params) as response:
+                body = await response.text()
                 if response.status >= 400:
-                    body = await response.text()
                     raise AnonpayError(f"AnonPay returned HTTP {response.status}: {body}")
-                data = await response.json(content_type=None)
+                try:
+                    data = json.loads(body)
+                except json.JSONDecodeError as exc:
+                    self._log_non_json_payload(
+                        action="creating checkout",
+                        status=response.status,
+                        content_type=response.headers.get("Content-Type"),
+                        body=body,
+                    )
+                    raise AnonpayError("AnonPay returned an unexpected payload while creating checkout.") from exc
         except asyncio.TimeoutError as exc:
             raise AnonpayError("Timed out while creating AnonPay checkout.") from exc
         except aiohttp.ClientError as exc:
@@ -56,10 +70,19 @@ class AnonpayClient:
         session = await self._get_session()
         try:
             async with session.get(status_url) as response:
+                body = await response.text()
                 if response.status >= 400:
-                    body = await response.text()
                     raise AnonpayError(f"AnonPay status call failed with {response.status}: {body}")
-                return await response.json(content_type=None)
+                try:
+                    return json.loads(body)
+                except json.JSONDecodeError as exc:
+                    self._log_non_json_payload(
+                        action="fetching status",
+                        status=response.status,
+                        content_type=response.headers.get("Content-Type"),
+                        body=body,
+                    )
+                    raise AnonpayError("AnonPay returned an unexpected payload while fetching status.") from exc
         except asyncio.TimeoutError as exc:
             raise AnonpayError("Timed out while fetching AnonPay status.") from exc
         except aiohttp.ClientError as exc:
@@ -89,3 +112,24 @@ class AnonpayClient:
             raise AnonpayError("Timed out while posting webhook update.") from exc
         except aiohttp.ClientError as exc:
             raise AnonpayError("Network error while posting webhook update.") from exc
+
+    @staticmethod
+    def _log_non_json_payload(
+        *,
+        action: str,
+        status: int,
+        content_type: Optional[str],
+        body: str,
+    ) -> None:
+        snippet = body.strip()
+        if not snippet:
+            snippet = "<empty body>"
+        elif len(snippet) > 500:
+            snippet = f"{snippet[:500]}…"
+        log.error(
+            "AnonPay returned non-JSON payload while %s (status=%s, content-type=%s): %s",
+            action,
+            status,
+            content_type,
+            snippet,
+        )

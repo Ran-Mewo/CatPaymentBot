@@ -92,11 +92,14 @@ class PaymentManager:
             "network_to": guild_settings["network_to"],
         }
         for key, value in profile["parameters"].items():
-            if key in {"discord_role_id", "duration_days"}:
+            if key in {"discord_role_id", "duration_days", "direct", "editable"}:
                 continue
             if value is None:
                 continue
             params[key] = str(value).lower() if isinstance(value, bool) else value
+
+        # Always force indirect mode (direct payments disabled)
+        params["direct"] = "false"
 
         response = await self._anonpay.create_checkout(params)
 
