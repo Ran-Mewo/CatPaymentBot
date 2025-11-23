@@ -92,7 +92,7 @@ class PaymentManager:
             "network_to": guild_settings["network_to"],
         }
         for key, value in profile["parameters"].items():
-            if key in {"discord_role_id", "duration_days", "direct", "editable"}:
+            if key in {"discord_role_id", "duration_days", "direct", "editable", "webhook"}:
                 continue
             if value is None:
                 continue
