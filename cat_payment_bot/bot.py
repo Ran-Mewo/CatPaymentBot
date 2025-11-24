@@ -491,10 +491,14 @@ class CatPaymentBot(commands.Bot):
                 continue
 
             try:
-                log.info("Refreshing status for session %s: %s", session.id, session.status_url)
                 payload = await self.manager.refresh_session_status(session)
             except AnonpayError as exc:
-                # log.warning("Failed to refresh status for session %s: %s", session.id, exc)
+                message = str(exc)
+                if "503" in message:
+                    log.info("AnonPay returned 503 for session %s; purging as expired.", session.id)
+                    await self.manager.purge_session(session.id)
+                else:
+                    log.warning("Failed to refresh status for session %s: %s", session.id, exc)
                 continue
 
             status = session.status.lower()
