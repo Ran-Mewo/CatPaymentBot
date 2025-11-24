@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 import discord
 
-from .anonpay import AnonpayClient, AnonpayError
+from .anonpay import AnonpayClient, AnonpayError, log
 from .config import Settings
 from .database import Database, utc_now
 
@@ -176,9 +176,8 @@ class PaymentManager:
         return sessions
 
     async def refresh_session_status(self, session: PaymentSession) -> Optional[dict[str, Any]]:
-        print(session.status_url)
         payload = await self._anonpay.fetch_status(session.status_url)
-        print(payload)
+        log.info("Refreshed status for session %s: %s", session.id, payload)
         raw_status = _first_present(payload, "status", "Status")
         status = str(raw_status or session.status).lower()
         await self._db.update_payment_session_status(session.id, status, payload)
