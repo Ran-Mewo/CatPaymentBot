@@ -514,6 +514,9 @@ class CatPaymentBot(commands.Bot):
         if session.webhook_url:
             webhook_payload = dict(payload)
             webhook_payload["discord_id"] = str(session.user_id)
+            webhook_payload["status"] = str(
+                webhook_payload.get("status") or webhook_payload.get("Status") or status
+            ).lower()
             try:
                 await self.anonpay.post_webhook(session.webhook_url, webhook_payload)
             except AnonpayError as exc:
@@ -566,6 +569,9 @@ class CatPaymentBot(commands.Bot):
             webhook_payload = dict(payload)
             webhook_payload["discord_id"] = str(session.user_id)
             webhook_payload["subscription_active"] = True
+            webhook_payload["status"] = str(
+                webhook_payload.get("status") or webhook_payload.get("Status") or session.status
+            ).lower()
             try:
                 await self.anonpay.post_webhook(webhook_url, webhook_payload)
             except AnonpayError as exc:

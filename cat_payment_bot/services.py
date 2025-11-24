@@ -13,6 +13,13 @@ from .database import Database, utc_now
 FINAL_STATUSES = {"finished", "paid partially", "failed", "expired", "halted", "refunded"}
 
 
+def _first_present(payload: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in payload and payload[key] is not None:
+            return payload[key]
+    return None
+
+
 @dataclass(slots=True)
 class PaymentSession:
     id: int
@@ -103,7 +110,8 @@ class PaymentManager:
 
         response = await self._anonpay.create_checkout(params)
 
-        anonpay_id = str(response.get("id"))
+        anonpay_id_value = _first_present(response, "id", "ID")
+        anonpay_id = str(anonpay_id_value) if anonpay_id_value is not None else ""
         if not anonpay_id:
             raise AnonpayError("AnonPay response missing identifier.")
 
@@ -114,13 +122,15 @@ class PaymentManager:
 
         expires_at = utc_now() + timedelta(minutes=self._settings.session_ttl_minutes)
         webhook_url = profile["parameters"].get("webhook")
+        raw_status = _first_present(response, "status", "Status")
+        normalized_status = str(raw_status or "waiting").lower()
 
         session_id = await self._db.create_payment_session(
             guild_id=guild_id,
             user_id=user_id,
             payment_profile_id=int(profile["id"]),
             anonpay_id=anonpay_id,
-            status=str(response.get("status", "waiting")),
+            status=normalized_status,
             status_url=status_url,
             checkout_url=url,
             webhook_url=webhook_url,
@@ -134,7 +144,7 @@ class PaymentManager:
             user_id=user_id,
             profile_id=int(profile["id"]),
             anonpay_id=anonpay_id,
-            status=str(response.get("status", "waiting")),
+            status=normalized_status,
             status_url=status_url,
             checkout_url=url,
             webhook_url=webhook_url,
@@ -167,7 +177,8 @@ class PaymentManager:
 
     async def refresh_session_status(self, session: PaymentSession) -> Optional[dict[str, Any]]:
         payload = await self._anonpay.fetch_status(session.status_url)
-        status = str(payload.get("status", session.status)).lower()
+        raw_status = _first_present(payload, "status", "Status")
+        status = str(raw_status or session.status).lower()
         await self._db.update_payment_session_status(session.id, status, payload)
         session.status = status
         session.last_payload = payload
