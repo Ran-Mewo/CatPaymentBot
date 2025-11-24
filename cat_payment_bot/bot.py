@@ -409,6 +409,7 @@ class CatPaymentBot(commands.Bot):
             user="Member to grant subscription access to.",
             payment="Name of the payment template.",
             duration_days="Override subscription duration in days.",
+            should_dm="Whether to notify the member via DM (default: true).",
         )
         @app_commands.autocomplete(payment=self._payment_name_autocomplete)
         async def grant_subscription(
@@ -416,6 +417,7 @@ class CatPaymentBot(commands.Bot):
             user: discord.Member,
             payment: Optional[str] = None,
             duration_days: Optional[app_commands.Range[int, 1, 3650]] = None,
+            should_dm: Optional[bool] = True,
         ) -> None:
             await interaction.response.defer(ephemeral=True, thinking=True)
             guild = interaction.guild
@@ -503,6 +505,8 @@ class CatPaymentBot(commands.Bot):
                     "payment_name": payment,
                     "expires_at": expires_at.isoformat(),
                 }
+                if should_dm is not None:
+                    payload["should_dm"] = bool(should_dm)
                 try:
                     await self.anonpay.post_webhook(webhook_url, payload)
                 except AnonpayError as exc:
