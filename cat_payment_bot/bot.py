@@ -493,7 +493,7 @@ class CatPaymentBot(commands.Bot):
             try:
                 payload = await self.manager.refresh_session_status(session)
             except AnonpayError as exc:
-                log.warning("Failed to refresh status for session %s: %s", session.id, exc)
+                # log.warning("Failed to refresh status for session %s: %s", session.id, exc)
                 continue
 
             status = session.status.lower()

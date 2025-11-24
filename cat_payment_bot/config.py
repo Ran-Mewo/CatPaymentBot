@@ -11,7 +11,7 @@ class Settings:
 
     discord_token: str
     database_path: str = "cat_payment_bot.db"
-    status_poll_interval: int = 60
+    status_poll_interval: int = 20
     subscription_check_interval: int = 3600
     session_ttl_minutes: int = 60
     request_timeout: int = 30

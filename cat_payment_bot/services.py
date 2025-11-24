@@ -177,6 +177,7 @@ class PaymentManager:
 
     async def refresh_session_status(self, session: PaymentSession) -> Optional[dict[str, Any]]:
         payload = await self._anonpay.fetch_status(session.status_url)
+        print(payload)
         raw_status = _first_present(payload, "status", "Status")
         status = str(raw_status or session.status).lower()
         await self._db.update_payment_session_status(session.id, status, payload)
