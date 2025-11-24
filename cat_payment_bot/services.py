@@ -225,3 +225,26 @@ class PaymentManager:
 
     async def list_subscriptions_for_profile(self, profile_id: int) -> list[dict[str, Any]]:
         return await self._db.list_subscriptions_for_profile(profile_id)
+
+    async def grant_manual_subscription(
+        self,
+        *,
+        guild_id: int,
+        user_id: int,
+        profile: dict[str, Any],
+        duration_days: Optional[int],
+        webhook_url: Optional[str],
+    ) -> datetime:
+        effective_duration = duration_days or profile.get("duration_days")
+        if not effective_duration:
+            raise RuntimeError("Subscription duration must be provided.")
+        expires_at = utc_now() + timedelta(days=int(effective_duration))
+        await self._db.upsert_subscription(
+            guild_id=guild_id,
+            user_id=user_id,
+            payment_profile_id=int(profile["id"]),
+            role_id=profile.get("role_id"),
+            expires_at=expires_at,
+            webhook_url=webhook_url,
+        )
+        return expires_at

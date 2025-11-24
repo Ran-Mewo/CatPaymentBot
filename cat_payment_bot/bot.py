@@ -402,6 +402,121 @@ class CatPaymentBot(commands.Bot):
             embed.add_field(name="Checkout", value=f"[Open Payment Link]({checkout_url})", inline=False)
             await interaction.edit_original_response(embed=embed)
 
+        @self.tree.command(name="grant", description="Manually activate a subscription for a member.")
+        @app_commands.checks.has_permissions(manage_guild=True)
+        @app_commands.guild_only()
+        @app_commands.describe(
+            user="Member to grant subscription access to.",
+            payment="Name of the payment template.",
+            duration_days="Override subscription duration in days.",
+        )
+        @app_commands.autocomplete(payment=self._payment_name_autocomplete)
+        async def grant_subscription(
+            interaction: discord.Interaction,
+            user: discord.Member,
+            payment: Optional[str] = None,
+            duration_days: Optional[app_commands.Range[int, 1, 3650]] = None,
+        ) -> None:
+            await interaction.response.defer(ephemeral=True, thinking=True)
+            guild = interaction.guild
+            if guild is None:
+                await interaction.edit_original_response(
+                    embed=self._build_embed(
+                        "This command can only be used inside a server.",
+                        title="Guild Only",
+                        color=self.ERROR_COLOR,
+                    )
+                )
+                return
+
+            setup_info = await self.manager.ensure_guild_setup(guild.id)
+            if not setup_info:
+                await interaction.edit_original_response(
+                    embed=self._build_embed(
+                        "Payments are not configured yet. Run `/setup` first.",
+                        title="Setup Required",
+                        color=self.WARNING_COLOR,
+                    )
+                )
+                return
+
+            if payment:
+                profile = await self.manager.get_payment_profile(guild.id, payment)
+                if not profile:
+                    await interaction.edit_original_response(
+                        embed=self._build_embed(
+                            f"No payment template named `{payment}` was found.",
+                            title="Payment Not Found",
+                            color=self.WARNING_COLOR,
+                        )
+                    )
+                    return
+            else:
+                profiles = await self.manager.list_payment_profiles(guild.id)
+                if not profiles:
+                    await interaction.edit_original_response(
+                        embed=self._build_embed(
+                            "This server has no payments configured.",
+                            title="No Payments",
+                            color=self.WARNING_COLOR,
+                        )
+                    )
+                    return
+                profile = profiles[0]
+                payment = profile["name"]
+
+            override_duration = int(duration_days) if duration_days else None
+            webhook_url = profile["parameters"].get("webhook")
+
+            try:
+                expires_at = await self.manager.grant_manual_subscription(
+                    guild_id=guild.id,
+                    user_id=user.id,
+                    profile=profile,
+                    duration_days=override_duration,
+                    webhook_url=webhook_url,
+                )
+            except RuntimeError as exc:
+                await interaction.edit_original_response(
+                    embed=self._build_embed(
+                        str(exc),
+                        title="Unable to Grant Subscription",
+                        color=self.ERROR_COLOR,
+                    )
+                )
+                return
+
+            role_id = profile.get("role_id")
+            if role_id:
+                role = guild.get_role(role_id)
+                if role:
+                    member = guild.get_member(user.id)
+                    if member:
+                        with contextlib.suppress(discord.HTTPException):
+                            await member.add_roles(role, reason="Manual subscription granted")
+
+            if webhook_url:
+                payload = {
+                    "event": "manual_subscription_granted",
+                    "discord_id": str(user.id),
+                    "guild_id": str(guild.id),
+                    "payment_name": payment,
+                    "expires_at": expires_at.isoformat(),
+                }
+                try:
+                    await self.anonpay.post_webhook(webhook_url, payload)
+                except AnonpayError as exc:
+                    log.warning("Webhook delivery failed for manual subscription: %s", exc)
+
+            expires_at_str = discord.utils.format_dt(expires_at, style="F")
+            await interaction.edit_original_response(
+                embed=self._build_embed(
+                    f"{user.mention} now has `{payment}` access until {expires_at_str}.",
+                    title="Subscription Granted",
+                    color=self.SUCCESS_COLOR,
+                )
+            )
+
     async def _payment_name_autocomplete(
         self,
         interaction: discord.Interaction,
