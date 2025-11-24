@@ -176,6 +176,7 @@ class PaymentManager:
         return sessions
 
     async def refresh_session_status(self, session: PaymentSession) -> Optional[dict[str, Any]]:
+        print(session.status_url)
         payload = await self._anonpay.fetch_status(session.status_url)
         print(payload)
         raw_status = _first_present(payload, "status", "Status")
