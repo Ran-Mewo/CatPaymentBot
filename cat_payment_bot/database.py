@@ -224,6 +224,31 @@ class Database:
         payload["donation_mode"] = bool(payload["donation_mode"])
         return payload
 
+    async def update_payment_profile(
+        self,
+        profile_id: int,
+        role_id: Optional[int],
+        duration_days: Optional[int],
+        parameters: dict[str, Any],
+        donation_mode: bool,
+    ) -> None:
+        now = utc_now().isoformat()
+        await self.execute(
+            """
+            UPDATE payment_profiles
+            SET role_id = ?, duration_days = ?, parameters = ?, donation_mode = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                role_id,
+                duration_days,
+                json.dumps(parameters),
+                int(donation_mode),
+                now,
+                profile_id,
+            ),
+        )
+
     async def delete_payment_profile(self, guild_id: int, name: str) -> Optional[int]:
         row = await self.fetch_one(
             "SELECT id FROM payment_profiles WHERE guild_id = ? AND name = ? COLLATE NOCASE",

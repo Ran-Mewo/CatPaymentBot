@@ -76,6 +76,22 @@ class PaymentManager:
             donation_mode=donation_mode,
         )
 
+    async def update_payment_profile(
+        self,
+        profile_id: int,
+        role_id: Optional[int],
+        duration_days: Optional[int],
+        parameters: dict[str, Any],
+        donation_mode: bool,
+    ) -> None:
+        await self._db.update_payment_profile(
+            profile_id=profile_id,
+            role_id=role_id,
+            duration_days=duration_days,
+            parameters=parameters,
+            donation_mode=donation_mode,
+        )
+
     async def delete_payment_profile(self, guild_id: int, name: str) -> Optional[int]:
         return await self._db.delete_payment_profile(guild_id, name)
 

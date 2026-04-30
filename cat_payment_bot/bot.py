@@ -248,6 +248,156 @@ class CatPaymentBot(commands.Bot):
                 )
             )
 
+        @self.tree.command(name="edit", description="View or edit an existing payment template.")
+        @app_commands.checks.has_permissions(manage_guild=True)
+        @app_commands.guild_only()
+        @app_commands.describe(
+            name="Name of the payment template to view or edit.",
+            role="New role granted after successful payment.",
+            duration_days="New subscription length in days.",
+            amount="New amount of the coin to charge or preset donate amount.",
+            memo="New memo/ExtraID value if required by the network.",
+            donation="Toggle donation mode on or off.",
+            ticker_from="Preselected coin ticker for the payer.",
+            network_from="Preselected network for the payer.",
+            description="Description displayed on the checkout page (URL-encoded).",
+            ref="Affiliate referral code.",
+            buttonbgcolor="Hex color (without #) for the checkout button background.",
+            textcolor="Hex color (without #) for the button text.",
+            bgcolor="Background color or set to true for gray.",
+            email="Email to receive payment confirmations.",
+            fiat_equiv="Fiat currency abbreviation for price display (USD, EUR, etc.).",
+            remove_direct_pay="Disable direct payments in the recipient coin.",
+            min_logpolicy="Restrict to providers with minimum log policy rating (A, B, or C).",
+            webhook="Webhook URL to mirror status updates.",
+            simple_mode="Enable streamlined checkout screen.",
+            maximum="Maximum USD amount allowed for donations.",
+        )
+        @app_commands.autocomplete(name=self._payment_name_autocomplete)
+        async def edit(
+            interaction: discord.Interaction,
+            name: str,
+            role: Optional[discord.Role] = None,
+            duration_days: Optional[app_commands.Range[int, 1, 3650]] = None,
+            amount: Optional[float] = None,
+            memo: Optional[str] = None,
+            donation: Optional[bool] = None,
+            ticker_from: Optional[str] = None,
+            network_from: Optional[str] = None,
+            description: Optional[str] = None,
+            ref: Optional[str] = None,
+            buttonbgcolor: Optional[str] = None,
+            textcolor: Optional[str] = None,
+            bgcolor: Optional[str] = None,
+            email: Optional[str] = None,
+            fiat_equiv: Optional[str] = None,
+            remove_direct_pay: Optional[bool] = None,
+            min_logpolicy: Optional[str] = None,
+            webhook: Optional[str] = None,
+            simple_mode: Optional[bool] = None,
+            maximum: Optional[float] = None,
+        ) -> None:
+            await interaction.response.defer(ephemeral=True, thinking=True)
+            guild = interaction.guild
+            if guild is None:
+                await interaction.edit_original_response(
+                    embed=self._build_embed(
+                        "This command can only be used inside a server.",
+                        title="Guild Only",
+                        color=self.ERROR_COLOR,
+                    )
+                )
+                return
+
+            profile = await self.manager.get_payment_profile(guild.id, name)
+            if not profile:
+                await interaction.edit_original_response(
+                    embed=self._build_embed(
+                        f"No payment named `{name}` was found.",
+                        title="Payment Not Found",
+                        color=self.WARNING_COLOR,
+                    )
+                )
+                return
+
+            parameters = dict(profile["parameters"])
+            new_role_id = role.id if role is not None else profile["role_id"]
+            new_duration = int(duration_days) if duration_days is not None else profile["duration_days"]
+            new_donation_mode = bool(donation) if donation is not None else profile["donation_mode"]
+
+            optional_fields = {
+                "amount": amount,
+                "memo": memo,
+                "ticker_from": ticker_from,
+                "network_from": network_from,
+                "description": description,
+                "ref": ref,
+                "buttonbgcolor": buttonbgcolor,
+                "textcolor": textcolor,
+                "bgcolor": bgcolor,
+                "email": email,
+                "fiat_equiv": fiat_equiv,
+                "remove_direct_pay": remove_direct_pay,
+                "min_logpolicy": min_logpolicy,
+                "webhook": webhook,
+                "simple_mode": simple_mode,
+                "maximum": maximum,
+            }
+            changed: list[str] = []
+            for key, value in optional_fields.items():
+                if value is None:
+                    continue
+                if isinstance(value, bool):
+                    parameters[key] = value
+                elif isinstance(value, float):
+                    parameters[key] = f"{value:.12g}"
+                elif key in {"ticker_from", "network_from"}:
+                    parameters[key] = str(value).upper()
+                else:
+                    parameters[key] = value
+                changed.append(key)
+
+            if role is not None:
+                parameters["discord_role_id"] = role.id
+                changed.append("role")
+            if duration_days is not None:
+                parameters["duration_days"] = int(duration_days)
+                changed.append("duration_days")
+            if donation is not None:
+                parameters["donation"] = bool(donation)
+                changed.append("donation")
+
+            if changed:
+                try:
+                    await self.manager.update_payment_profile(
+                        profile_id=int(profile["id"]),
+                        role_id=new_role_id,
+                        duration_days=new_duration,
+                        parameters=parameters,
+                        donation_mode=new_donation_mode,
+                    )
+                except Exception as exc:  # pylint: disable=broad-except
+                    log.exception("Failed to update payment profile: guild=%s name=%s", guild.id, name)
+                    await interaction.edit_original_response(
+                        embed=self._build_embed(
+                            f"Failed to update payment template: {exc}",
+                            title="Edit Failed",
+                            color=self.ERROR_COLOR,
+                        )
+                    )
+                    return
+
+            embed = self._build_profile_embed(
+                guild=guild,
+                name=profile["name"],
+                role_id=new_role_id,
+                duration_days=new_duration,
+                donation_mode=new_donation_mode,
+                parameters=parameters,
+                changed_fields=changed,
+            )
+            await interaction.edit_original_response(embed=embed)
+
         @self.tree.command(name="delete", description="Remove an existing payment template.")
         @app_commands.checks.has_permissions(manage_guild=True)
         @app_commands.guild_only()
@@ -520,6 +670,60 @@ class CatPaymentBot(commands.Bot):
                     color=self.SUCCESS_COLOR,
                 )
             )
+
+    def _build_profile_embed(
+        self,
+        *,
+        guild: discord.Guild,
+        name: str,
+        role_id: Optional[int],
+        duration_days: Optional[int],
+        donation_mode: bool,
+        parameters: dict[str, Any],
+        changed_fields: list[str],
+    ) -> discord.Embed:
+        if changed_fields:
+            title = f"Payment Updated: {name}"
+            color = self.SUCCESS_COLOR
+            intro = f"Updated fields: {', '.join(f'`{f}`' for f in changed_fields)}."
+        else:
+            title = f"Payment Template: {name}"
+            color = self.INFO_COLOR
+            intro = "Current configuration:"
+
+        embed = self._build_embed(intro, title=title, color=color)
+
+        if role_id:
+            role = guild.get_role(role_id)
+            role_value = role.mention if role else f"`{role_id}` (role not found)"
+        else:
+            role_value = "none"
+        embed.add_field(name="Role", value=role_value, inline=True)
+        embed.add_field(
+            name="Duration",
+            value=f"{duration_days} day(s)" if duration_days else "none",
+            inline=True,
+        )
+        embed.add_field(
+            name="Mode",
+            value="Donation" if donation_mode else "Fixed Payment",
+            inline=True,
+        )
+
+        display_params = {
+            k: v for k, v in parameters.items()
+            if k not in {"discord_role_id", "duration_days", "donation"} and v is not None
+        }
+        if display_params:
+            lines = [f"`{k}`: {v}" for k, v in display_params.items()]
+            value = "\n".join(lines)
+            if len(value) > 1024:
+                value = value[:1021] + "..."
+            embed.add_field(name="Parameters", value=value, inline=False)
+        else:
+            embed.add_field(name="Parameters", value="*(none configured)*", inline=False)
+
+        return embed
 
     async def _payment_name_autocomplete(
         self,
